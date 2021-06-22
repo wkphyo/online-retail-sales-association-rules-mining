@@ -1,0 +1,163 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Association Rules Mining Assingment
+#### Knowledge Discovery and Data Analytics I
+#### Win Phyo
+#### April 3, 2021
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+rm(list=ls())  # Clear environment
+```
+Import necessary packages
+```{r message=FALSE}
+library('arules')
+library('backports')
+library('zeallot')
+library('arulesViz')
+library('dplyr')
+library('stringr')
+library('chron')
+```
+
+```{r message=FALSE}
+df <- read.csv('OnlineRetail.csv', stringsAsFactors = FALSE)
+```
+**Data exploration**
+```{r}
+str(df)
+summary(df)
+```
+**Data cleaning**
+```{r}
+sum(is.null(df$InvoiceNo))  # Get sum of all records with null InvoiceNo
+```
+No null InvoiceNo values observed in dataframe
+
+It is observed that there are invoice numbers that begin with the character 'C'.
+Drop 'C' character.
+```{r}
+xrows <- 0
+for(i in 1:nrow(df)){
+  if(grepl('C', df[i, 'InvoiceNo'])){
+    xrows[i] <- i
+  }
+}
+
+xrows <- xrows[!is.na(xrows)]  # Drop rows with NA; keep only valid row numbers
+
+df <- df[-xrows, ]  # Remove these rows from dataframe
+```
+Replace spaces in item description field with underscores
+```{r}
+df$Description <- trimws(df$Description)  # Remove trailing and leading spaces
+df$Description <- gsub(" ", "_", df$Description)
+```
+Convert date field to native R datetime object
+```{r}
+df$InvoiceDate <- as.Date(df$InvoiceDate, format = "%m/%d/%Y")
+```
+Filter dataframe for Irish transactions
+```{r}
+eire <- df[df$Country == 'EIRE', ]
+```
+Write cleaned Irish dataset to file for ease of use and as a checkpoint
+```{r}
+write.csv(eire, file = '2021-cleaned-eire.csv', row.names = FALSE)
+```
+##### Assocation Rule Mining
+Import Irish dataset as transactions
+```{r}
+eire <- read.transactions(
+  '2021-cleaned-eire.csv', 
+  format = c('single'),
+  header = TRUE,
+  rm.duplicates = FALSE,
+  cols = c('InvoiceNo', 'StockCode'),
+  sep = ','
+)
+```
+Check what this object looks like
+```{r}
+inspect(eire[1:2])
+```
+Items are grouped by invoice number; each record in this dataset corresponds to 
+a particular, unique invoice number.  
+
+**Explore support counts to determine minimum value/cutoff point**
+```{r}
+itemFrequencyPlot(eire, topN = 15)  # 15 most frequently occuring items
+itemFrequencyPlot(eire, support = 0.1)
+itemFrequencyPlot(eire, support = 0.08)
+```  
+
+There are 13 items that appear in at least 10% of all transactions. There are 21
+items that appear in at least 8% of all transactions.  
+
+**Get association rules**  
+Let the minimum confidence value be 0.7, and the minimum support value be 0.08
+```{r}
+eire.rules <- apriori(
+  eire, 
+  parameter = list(
+    confidence = 0.7,
+    support = 0.08,
+    minlen = 2
+  )
+)
+```
+```{r}
+plot(
+  eire.rules, 
+  method = 'matrix',
+)
+```
+
+Explore rules
+```{r}
+inspect(eire.rules)
+summary(eire.rules)
+```
+Return only rules with a lift value greater than 5
+```{r}
+subset.rules = eire.rules[quality(eire.rules)$lift > 5]
+inspect(subset.rules)
+```
+These rules have at least 8% support, 72% confidence, and 5.5 lift.  
+
+There corresponding item descriptions for the relevant stock codes are as 
+follows:
+
+| StockCode | Item Description                  |
+|-----------|-----------------------------------|
+| 22423     | REGENCY_CAKESTAND_3_TIER          |
+| 22697     | GREEN_REGENCY_TEACUP_AND_SAUCER   |
+| 22698     | PINK_REGENCY_TEACUP_AND_SAUCER	  |
+| 22699     | ROSES_REGENCY_TEACUP_AND_SAUCER	  |
+
+3/4 items are teacup and saucer pairs. Transactions that involved the Regency 
+Cakestand and Green Regency Teacup and Saucer also included the Roses Regency
+Teacup and Saucer 100% of the time. The rules with the highest lift value are 
+rules 7, 1, and 2.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
